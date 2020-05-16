@@ -1,0 +1,15 @@
+def upload_file(filename, bucket):
+    file = open(filename, 'rb')
+    client.upload_fileobj(file, bucket, filename)
+    file.close()
+
+
+def main():
+    if not does_bucket_exist(BUCKET_NAME):
+        create_bucket(BUCKET_NAME)
+
+    upload_file("test2.txt", BUCKET_NAME)
+
+
+if __name__ == "__main__":
+    main()
