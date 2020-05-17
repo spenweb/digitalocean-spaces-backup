@@ -1,9 +1,10 @@
 #!/usr/bin/python
-import os
 import boto3
+import os
 from zipfile import ZipFile
 from datetime import datetime
 import argparse
+from enum import Enum, auto
 
 # Read S3 keys from environment variables
 SPACES_KEY = os.getenv('SPACES_KEY')
@@ -11,19 +12,34 @@ SPACES_SECRET = os.getenv('SPACES_SECRET')
 
 # Constants
 PREFIX_SEPARATOR = '____'
-TIME_FORMAT = "%Y%m%d"
+TIME_FORMAT = "%Y%m%d%H%M%S"
 DEFAULT_ROTATION_COUNT_MAX = 10
 
+# Mode types
+class Mode(Enum):
+    SINGLE_FILE = auto()
+    COMPRESS_DIRS = auto()
+
+
 # Setup command line arguments
-parser = argparse.ArgumentParser(description='Backup list of directories to DigitalOcean supports rotating backups by '
-                                             'default', prog='dobackup', epilog='Created 2020 by Spencer Brown')
+parser = argparse.ArgumentParser(description='Backup file to DigitalOcean. Supports rotating backups by default. '
+                                             'Has the ability to compress a list of directories.', prog='dobackup',
+                                 epilog='Created 2020 by Spencer Brown')
 parser.add_argument('bucketname', type=str, help='The s3 compatible bucket name')
-parser.add_argument('zipname', type=str, help='Name of the zip file to create (before timestamped)')
-parser.add_argument('--basedir', dest='base_dir', type=str, help='Parent directory that above all directories to zip',
-                    default=os.getcwd())
-parser.add_argument('directories', metavar='D', type=str, nargs='+', help='List of directories to zip up')
-parser.add_argument('-o', '--rotationcountmax', dest='rotation_count_max', type=int, help='Max number of back ups for '
-                                                                                          'the given zipname',
+parser.add_argument('backupfilename', type=str, help='The file name for a single file to be backed up. When a list '
+                                                     'of directories is provided, this is the name of the generated '
+                                                     'compressed zip file of the provided directories. This file name '
+                                                     'will be prefixed with a timestamp and also used for tracking old '
+                                                     'backups when rotating.')
+parser.add_argument('--basedir', dest='base_dir', type=str, help='Parent directory that all directories to zip are in. '
+                                                                 'Defaults to cwd.', default=os.getcwd())
+parser.add_argument('directories', metavar='D', type=str, nargs='*', help='List of directories to zip up')
+parser.add_argument('-o', '--rotationcountmax', dest='rotation_count_max', type=int, help='Max number of backups for '
+                                                                                          'the given backupfilename ('
+                                                                                          'default is ' +
+                                                                                          str(
+                                                                                              DEFAULT_ROTATION_COUNT_MAX
+                                                                                          ) + ')',
                     default=DEFAULT_ROTATION_COUNT_MAX)
 
 # Initialize the S3 session
@@ -47,14 +63,13 @@ def does_bucket_exist(name):
     return False
 
 
-def upload_file(filename, bucket):
+def upload_file(filename: str, bucket: str, rename: str = None):
     with open(filename, 'rb') as file:
-        client.upload_fileobj(file, bucket, filename)
+        client.upload_fileobj(file, bucket, filename if rename is None else rename)
 
 
 def delete_remote_file(filename, bucket):
-    client.delete_object(Bucket=bucket,
-                         Key=filename)
+    client.delete_object(Bucket=bucket, Key=filename)
 
 
 def zip_folders(zip_name: str, folders_to_zip: list, base_dir: str):
@@ -85,7 +100,6 @@ def find_related_remote_files(filename: str, bucket: str) -> list:
         if len(parts) == 2 and parts[1] == filename:
             related_files.append(parts)
     return related_files
-
 
 
 def determine_files_to_delete(file_data: list, rotation_count_max: int) -> list:
@@ -121,30 +135,54 @@ def determine_files_to_delete(file_data: list, rotation_count_max: int) -> list:
 
 
 def remote_clean_up(filename: str, bucket: str, rotation_count_max: int):
+    """
+    Rotate the backups according to the rotation count max value for the particular filename (without time prefix).
+    :param filename:
+    :param bucket:
+    :param rotation_count_max:
+    :return:
+    """
     file_parts = find_related_remote_files(filename, bucket)
     files_to_delete = determine_files_to_delete(file_parts, rotation_count_max)
-    pass
+    for file in files_to_delete:
+        delete_remote_file(file, bucket)
 
 
 def main():
+    mode = None
     args = parser.parse_args()
     bucket_name = args.bucketname
-    zip_name = args.zipname
-    dated_zip_name = date_prefix_name(zip_name)
+    backup_name = args.backupfilename  # Possibly contains directory in the name
+    dated_backup_name = date_prefix_name(os.path.basename(backup_name))
     dirs_to_zip = args.directories
     base_dir = args.base_dir
     rotation_count_max = args.rotation_count_max
 
+    # Determine what mode (upload existing or compress dirs and upload generated)
+    file_exists = os.path.isfile(os.path.join(base_dir, backup_name))
+    if file_exists and len(dirs_to_zip) == 0:
+        mode = Mode.SINGLE_FILE
+    elif not file_exists and len(dirs_to_zip) > 0:
+        mode = Mode.COMPRESS_DIRS
+    else:
+        print("Bad usage!")
+        parser.print_help()
+        exit()
+
+    # Prepare bucket
     if not does_bucket_exist(bucket_name):
         create_bucket(bucket_name)
 
-    zip_folders(dated_zip_name, dirs_to_zip, base_dir)
+    if mode == Mode.COMPRESS_DIRS:
+        zip_folders(dated_backup_name, dirs_to_zip, base_dir)
+        upload_file(dated_backup_name, bucket_name)
+        local_clean_up(dated_backup_name)
 
-    upload_file(dated_zip_name, bucket_name)
+    if mode == Mode.SINGLE_FILE:
+        upload_file(backup_name, bucket_name, dated_backup_name)
 
-    local_clean_up(dated_zip_name)
-
-    remote_clean_up(zip_name, bucket_name, rotation_count_max)
+    # Auto rotate backups
+    remote_clean_up(os.path.basename(backup_name), bucket_name, rotation_count_max)
 
 
 if __name__ == "__main__":
