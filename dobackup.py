@@ -87,22 +87,32 @@ def find_related_remote_files(filename: str, bucket: str) -> list:
     return related_files
 
 
+
 def determine_files_to_delete(file_data: list, rotation_count_max: int) -> list:
-    count = len(file_data)
+    """
+    Given a list of files that have a similar file name, sort the files by date and then return a list with
+    the full file name (with time prefix) of files that should be deleted according to the rotation count max.
+    :param file_data:
+    :param rotation_count_max:
+    :return:
+    """
     files_to_delete = []
 
-    if count > rotation_count_max:
-        files_with_dates = []
+    if len(file_data) > rotation_count_max:
+        files_with_good_dates = []
         for file_parts in file_data:
-            d = datetime.strptime(file_parts[0], TIME_FORMAT)
-            file_parts.append(d)
-            files_with_dates.append(file_parts)
+            try:
+                d = datetime.strptime(file_parts[0], TIME_FORMAT)
+                file_parts.append(d)
+                files_with_good_dates.append(file_parts)
+            except ValueError:
+                print(f'Badly formatted time prefix on file name: {file_parts[0]}{PREFIX_SEPARATOR}{file_parts[1]}')
 
         # Sort the files
-        files_with_dates.sort(key=lambda tup: tup[2])
+        files_with_good_dates.sort(key=lambda tup: tup[2])
 
-        overage = count - rotation_count_max
-        file_delete_data = files_with_dates[0:overage]
+        overage = max(0, len(files_with_good_dates) - rotation_count_max)
+        file_delete_data = files_with_good_dates[0:overage]
 
         for data in file_delete_data:
             files_to_delete.append(f'{data[0]}{PREFIX_SEPARATOR}{data[1]}')
