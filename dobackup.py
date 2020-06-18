@@ -9,6 +9,8 @@ from enum import Enum, auto
 # Read S3 keys from environment variables
 SPACES_KEY = os.getenv('SPACES_KEY')
 SPACES_SECRET = os.getenv('SPACES_SECRET')
+SPACES_REGION_NAME = os.getenv('SPACES_REGION_NAME')
+SPACES_ENDPOINT_URL = os.getenv('SPACES_ENDPOINT_URL')
 
 # Constants
 PREFIX_SEPARATOR = '____'
@@ -45,8 +47,8 @@ parser.add_argument('-o', '--rotationcountmax', dest='rotation_count_max', type=
 # Initialize the S3 session
 session = boto3.session.Session()
 client = session.client('s3',
-                        region_name='nyc3',
-                        endpoint_url='https://nyc3.digitaloceanspaces.com',
+                        region_name=SPACES_REGION_NAME,
+                        endpoint_url=SPACES_ENDPOINT_URL,
                         aws_access_key_id=SPACES_KEY,
                         aws_secret_access_key=SPACES_SECRET)
 
