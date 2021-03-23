@@ -17,6 +17,7 @@ PREFIX_SEPARATOR = '____'
 TIME_FORMAT = "%Y%m%d%H%M%S"
 DEFAULT_ROTATION_COUNT_MAX = 10
 
+
 # Mode types
 class Mode(Enum):
     SINGLE_FILE = auto()
@@ -58,11 +59,16 @@ def create_bucket(name):
 
 
 def does_bucket_exist(name):
-    response = client.list_buckets()
-    for space in response['Buckets']:
-        if space['Name'] == name:
-            return True
-    return False
+    """
+    Inspired by https://stackoverflow.com/a/26871885
+    :param name: str
+    :return:
+    """
+    try:
+        client.head_bucket(Bucket=name)
+        return True
+    except:
+        return False
 
 
 def upload_file(filename: str, bucket: str, rename: str = None):
