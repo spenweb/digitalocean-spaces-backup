@@ -16,6 +16,7 @@ Backup file to DigitalOcean. Supports rotating backups by default. Has the abili
 
 ## Example crontab entry for cron job
 ```
+SHELL=/bin/bash
 0 0 * * 1 source /home/username/.dobackup_env && /opt/digitalocean-spaces-backup/dobackup.py -o 5 --basedir /some/base/directory/to/backup space-name zip_name.zip specific/directory importantDir1 importantDir2
 30 0 * * * mysqldump databasename | gzip -c > databasename.sql.gz && source /home/username/.dobackup_env && /opt/digitalocean-spaces-backup/dobackup.py -o 30 space-name database.sql.gz
 ```
